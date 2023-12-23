@@ -1,0 +1,7 @@
+"0","ratings %>%"
+"0","  dplyr::slice_head(n=500) %>%"
+"0","  DT::datatable(., "
+"0","                options = list(autoWidth = TRUE,"
+"0","                               pageLength = 50,"
+"0","                               scroller = TRUE,"
+"0","                               scrollY = '500px'))"

@@ -1,0 +1,48 @@
+---
+title: "About Me"
+title-block-banner: "#99CCFF"
+---
+
+::: grid
+::: g-col-8
+I graduated from Johns Hopkins University with a Bachelor of Science in Molecular & Cellular Biology and a minor in Applied Math and Statistics. My previous research has been on therapeutic compound discovery leveraging M13 phage display and next-generation sequencing. Broadly speaking, I am passionate about multi-omics and/or precision medicine approaches to tackle chronic and complex illnesses, such as identifying biomarkers or characterizing individual variability to better prevent, diagnose, and manage chronic diseases. At JHSPH, I hope to gain more experience in clinical trial.
+:::
+
+::: g-col-4
+![](images/p7.jpg){width=70%}
+:::
+:::
+
+------------------------------------------------------------------------
+
+### [Education]{style="color: #4682b4;"}
+
+**Johns Hopkins Bloomberg School of Public Health** \| Sc.M. in [Biostatistics](https://publichealth.jhu.edu/academics/scm-dept-of-biostatistics) \| Current
+
+**Johns Hopkins University** \| B.S. in [Molecular & Cellular Biology](https://bio.jhu.edu/) \| Minor in Applied Math & Statistics
+
+------------------------------------------------------------------------
+
+### [Experience]{style="color: #4682b4;"}
+
+**Johns Hopkins University School of Medicine** \| *Research Assistant: M13 phage display research* \| [The Larman Lab](https://labs.pathology.jhu.edu/larman/) \| Feb 2020 - Aug 2023
+
+[**Dian Diagnostics Co., Ltd.**](http://en.dazd.cn/) \| *Bioinformatics Intern: molecular diagnostics* \| Apr 2022 - Jun 2022
+
+**Johns Hopkins University** \| *Undergraduate Research Assistant: perception of quantity* \| [The Vision & Cognition Lab](https://www.halberdalab.net/) \| Feb 2019 - Dec 2019
+
+------------------------------------------------------------------------
+
+### [Interests and Hobbies]{style="color: #4682b4;"}
+
+Black & white photography, movies/documentaries, watercolor, badminton, traveling, running, chess
+
+::: {layout-ncol="2"}
+![MD, USA. Oct 2021](images/p1.png)
+
+![MD, USA, April 2022](images/p2.png)
+
+![FL, USA. June 2018](images/p9.jpg)
+
+![MI, USA. Aug 2019](images/p4.jpg)
+:::

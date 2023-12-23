@@ -1,0 +1,12 @@
+name: Project4_Dashboard
+title: Project4_Dashboard
+username: zliu-peter
+account: zliu-peter
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 10842676
+bundleId: 8079670
+url: https://zliu-peter.shinyapps.io/Project4_Dashboard/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

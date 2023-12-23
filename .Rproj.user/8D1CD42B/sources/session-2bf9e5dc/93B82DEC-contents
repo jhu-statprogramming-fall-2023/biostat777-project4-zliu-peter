@@ -1,0 +1,31 @@
+---
+title: "Zixing \"Peter\" Liu"
+image: images/Peter.jpg
+about:
+  template: jolla
+  links:
+    - text: "{{< fa brands linkedin >}} Linkedin"
+      href: https://linkedin.com/in/zixing-peter-liu
+      
+    - text: Github
+      icon: github
+      href: https://github.com/zliu-peter
+      
+    - text: "{{< fa envelope >}} Email"
+      href: mailto:zliu94@jhu.edu
+      
+---
+
+<!-- For icons, I used fontawesome -->
+
+<div class="intro">
+
+**I am a first-year ScM student in biostatistics at Johns Hopkins Bloomberg School of Public Health (JHSPH). I am interested in research about autoimmune diseases, autoinflammatory diseases, and chronic pain through the lens of precision medicine.**
+
+</div>
+
+<style>
+    .title { font-family: "Garamond", serif; font-weight: bold; font-size: 50px }
+    .intro { font-family: "Garamond", serif; color: "black"; font-size: 25px }
+    body { background-color: #89CFF0; }
+</style>

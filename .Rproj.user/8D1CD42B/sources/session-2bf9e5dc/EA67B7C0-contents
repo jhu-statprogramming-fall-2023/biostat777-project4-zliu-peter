@@ -1,0 +1,987 @@
+---
+title: "Project 4: Board Games Analysis"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    source_code: embed
+    theme:
+      bootswatch: lumen
+runtime: shiny
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(DT)
+library(here)
+library(tidyverse)
+library(magrittr)
+library(tidytext)
+library(plotly)
+library(kableExtra)
+```
+
+```{r, warning=FALSE}
+# check if data directory exists locally
+if (!dir.exists(here("data"))) {
+  # if not, create it
+  dir.create(here("data"))
+}
+
+
+# Loading Data
+if (!file.exists(here("data", "ratings.RDS")) && !file.exists(here("data", "details.RDS"))) {
+    ratings <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-01-25/ratings.csv")
+    details <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-01-25/details.csv")
+
+    # save the files to RDS objects
+    saveRDS(ratings, file = here("data", "ratings.RDS"))
+    saveRDS(details, file = here("data", "details.RDS"))
+}
+
+# loading data
+ratings = readRDS(here("data", "ratings.RDS"))
+details = readRDS(here("data", "details.RDS"))
+```
+
+
+# About
+
+## Column 1 {data-width="650"}
+
+**Background**
+
+The board game market size has been growing and projected to increase continuously, thereby offering an opportunity for making interesting queries.
+
+**Purpose**
+
+In this dashboard, I am investigating patterns within a board game dataset from [TidyTuesday](https://github.com/rfordatascience/tidytuesday/tree/master/data/2022/2022-01-25), which contains various details on board game user ratings, designers, published year, number of people owning the game, etc. I focused on games developed since the 1990s. Specifically, I seek to answer the following questions:
+
+-   Who are some of the best board game designers since the 1990s?
+    -   Who are very prolific?
+    -   When are they active?
+    -   Do they have good ratings? Are ratings consistent over time?
+    -   What game categories are these prolific designers associated with?
+-   What games are the most owned since the 1990s?
+    -   What are the top board game categories since the 1990s?
+        -   Is there any trends?
+    -   What are the top board game mechanics over the years?
+        -   Is there any trends?
+        
+Games published before 1990, those with fewer than 50 user ratings, and those with unknown or uncredited designers were excluded from the analysis.
+
+**Intended Audience**
+
+This analysis is intended for the general public, as well as those who are interested in or produce board games.
+
+
+## Column 2 {data-width=500}
+
+Video Walkthrough
+
+<iframe 
+  width="700" 
+  height="500" 
+  src="https://www.youtube.com/embed/b8-7hpyF58U"
+  title="YouTube video player" 
+  frameborder="0" 
+  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+  allowfullscreen
+>
+</iframe>
+
+
+# The Data
+
+## Column {.tabset .tabset-fade}
+
+The source dataset was posted on [tidytuesday](https://github.com/rfordatascience/tidytuesday/tree/master/data/2022/2022-01-25), from [Kaggle](https://www.kaggle.com/jvanelteren/boardgamegeek-reviews/version/3?select=2022-01-08.csv) and [Board Games Geek](https://www.boardgamegeek.com/), thanks to [David and Georgios](https://github.com/rfordatascience/tidytuesday/issues/382#issuecomment-1020305849).
+
+There are two datasets, one (`rating.csv`: 21831 rows x 10 columns) containing general info about game name, id, and rating while the other (`details.csv`: 21631 rows x 23 columns) including more comprehensive details on board game designer, artist, description, category, mechanic, published year, rating, etc.
+
+### Rating Dataset
+
+**Data dictionary for the `rating.csv` dataset:**
+
+|variable      |class     |description |
+|:-------------|:---------|:-----------|
+|num           |double    | Game number |
+|id            |double    | Game ID |
+|name          |character | Game name |
+|year          |double    | Game year |
+|rank          |double    | Game rank |
+|average       |double    | Average rating  |
+|bayes_average |double    | Bayes average rating|
+|users_rated   |double    | Users rated |
+|url           |character | Game url |
+|thumbnail     |character | Game thumbnail  |
+
+**The raw data table:**
+
+Note that I am only showing the first 100 rows since it is too long. For more details, check the source data website above.
+
+```{r}
+ratings %>%
+  dplyr::slice_head(n=100) %>%
+  DT::datatable(., 
+                options = list(autoWidth = TRUE,
+                               pageLength = 10,
+                               scroller = TRUE,
+                               scrollY = '700px'))
+```
+
+
+### Details Dataset
+
+**Data dictionary for the `details.csv` dataset:**
+
+|variable                |class     |description |
+|:-----------------------|:---------|:-----------|
+|num                     |double    | Game number |
+|id                      |double    | Game ID |
+|primary                 |character | Primary name  |
+|description             |character | Description of game |
+|yearpublished           |double    | Year published |
+|minplayers              |double    | Min n of players|
+|maxplayers              |double    | Max n of players |
+|playingtime             |double    | Playing time in minutes |
+|minplaytime             |double    | Min play time |
+|maxplaytime             |double    | Max plat tome |
+|minage                  |double    | minimum age|
+|boardgamecategory       |character | Category |
+|boardgamemechanic       |character | Mechanic   |
+|boardgamefamily         |character | Board game family   |
+|boardgameexpansion      |character | Expansion |
+|boardgameimplementation |character | Implementation  |
+|boardgamedesigner       |character | Designer |
+|boardgameartist         |character | Artist  |
+|boardgamepublisher      |character | Publisher     |
+|owned                   |double    | Num owned  |
+|trading                 |double    | Num trading  |
+|wanting                 |double    | Num wanting |
+|wishing                 |double    | Num wishing |
+
+**The raw data table:**
+
+I am only showing the first 100 rows since it is too long.
+
+```{r}
+details %>%
+  dplyr::slice_head(n=100) %>%
+  DT::datatable(., 
+                options = list(autoWidth = TRUE,
+                               pageLength = 10,
+                               scroller = TRUE,
+                               scrollY = '700px'))
+```
+
+
+```{r data_cleaning, message=FALSE, warning=FALSE}
+# Data cleaning & Wrangling
+games <- details %>%
+  dplyr::select(-num) %>%
+  dplyr::left_join(ratings %>% dplyr::select(c("id","average","users_rated")), by="id") %>%
+  dplyr::filter(users_rated>=50 & yearpublished>=1990) %>%
+  dplyr::mutate(decades = case_when(
+    between(yearpublished, 1990, 1999) ~ "1990s",
+    between(yearpublished, 2000, 2009) ~ "2000s",
+    between(yearpublished, 2010, 2019) ~ "2010s",
+    yearpublished > 2019 ~ "2020s")) %>%
+  dplyr::rename_with(~stringr::str_replace_all(., "boardgame", "")) %>%
+  dplyr::select(-c("family","expansion","implementation","artist","publisher"))
+
+rm_brackets <- function(x){
+  {gsub("\\[|\\]", "", x)} %>%
+  str_replace_all(., ", '", ";'") %>%
+  str_replace_all(., ", \"", ";'") %>%
+  str_replace_all(., "\"", "'")
+}
+
+games %<>% dplyr::mutate(across(category:designer, rm_brackets))
+
+```
+
+# Designers Production
+
+## Column {.tabset}
+
+### Amount of Games by Designers
+
+```{r, warning=FALSE, message=FALSE}
+gd <- games %>%
+  separate_rows(designer, sep = ";\\s*") %>%
+  dplyr::group_by(decades, designer) %>%
+  dplyr::summarise(count=n(), score=round(mean(average),2)) %>%
+  dplyr::filter(!is.na(designer)) %>%
+  dplyr::filter(designer!="'(Uncredited)'") %>%
+  dplyr::ungroup()
+
+
+gd_ui <- fluidPage(
+  titlePanel("Who are Prolific Board Game Designers?"),
+  sidebarLayout(
+    sidebarPanel(
+      checkboxGroupInput("decades", label = "Select a decade", choices = sort(unique(gd$decades)), selected = c("1990s")
+      ),
+      numericInput("rows", label = "Choose the top X prolific designers (from 1 to 10)",
+                   value=5,
+                   min=1,
+                   max=10,
+                   step=1,
+                   width="100%"),
+      helpText("Entering 5 refers to looking at top 5 prolific designers by total counts for the selected decades combined."),
+      htmlOutput("summary")
+    ),
+    mainPanel(
+      plotOutput("bar"),
+      DT::dataTableOutput("table")
+    )
+  )
+)
+
+gd_server <- function(input, output) {
+  
+  selected_gd <- reactive({
+    filtered_gd <- gd %>%
+      dplyr::filter(decades %in% input$decades) %>%
+      dplyr::mutate(designer=gsub("'","",designer))
+    
+    top_designers <- filtered_gd %>%
+      dplyr::group_by(designer) %>%
+      dplyr::summarise(total_count=sum(count)) %>%
+      dplyr::arrange(desc(total_count)) %>%
+      dplyr::slice_head(n=as.numeric(input$rows))
+    
+    filtered_gd %>%
+      dplyr::filter(designer %in% top_designers$designer) %>%
+      dplyr::group_by(designer) %>%
+      dplyr::mutate(total_count=sum(count)) %>%
+      dplyr::mutate(decades=factor(decades, levels=rev(unique(decades))))
+  })
+  
+
+  output$bar <- renderPlot({
+    ggplot(selected_gd(), aes(x=fct_reorder(designer, total_count), y=count, fill=decades)) +
+    geom_bar(stat="identity", position="stack") +
+    coord_flip() +
+    labs(title = "Prolific Game Designers since 1990s",
+         x = paste("Top", length(unique(selected_gd()$designer)), "Designers"),
+         y = "# of Board Games Developed by Designers",
+         subtitle = "Selection of designers based on total # of games produced across selected decades",
+         caption = "Games with <50 reviews excluded in counts."
+         ) +
+    theme_bw() +
+    theme(legend.text = element_text(size=12),
+          legend.title = element_text(size=14),
+          plot.title = element_text(size=19, face="bold"),
+          plot.subtitle = element_text(size=12),
+          plot.caption = element_text(size=10, face="bold"),
+          axis.title = element_text(size=14, face="bold"),
+          axis.text = element_text(size=10)) +
+     guides(fill=guide_legend(title="Decades")) +
+    scale_fill_brewer(palette="Set3")
+  })
+  
+  output$table <- DT::renderDataTable({
+    selected_gd()},
+    options = list(pageLength = 10,
+                   scroller = TRUE,
+                   scrollY = '300px'))
+  
+  output$summary <- renderText({
+    paste0("This figure currently shows the top ", length(unique(selected_gd()$designer)), " prolific game designers by the number of games designed in the selected decades -- ", paste(unique(selected_gd()$decades), collapse=" & "), ". While this interactive page is meant for exploratory analysis, we clearly see that Reiner Knizia absolutely dominated in quantity of games developed, with his peak active years in the 2000s and 2010s. Some other creative game designers who designed many games are (1) Wolfgang Kramer, who were mostly active in the 1990s and 2000s; (2) Martin Wallace, Matt Hyra, Eric M. Lang who became more prolific in the 2010s; and (3) Prospero Hall who emerged in the 2020s.")
+  })
+
+}
+
+shinyApp(gd_ui, gd_server)
+```
+
+### Summary
+
+#### Games Designed by Decades 
+
+We can take a closer look at both the amount of games and rating **stratified by each decade**. The rating are depicted by the color gradient while the bars represent the number of games developed. We see some aforementioned familiar names appear, meaning that those who were one of the most prolific designers were typically quite active for over 30 years. For instance, Reiner Knizia topped the charts in three decades since the 1990s. Based on the color gradient, his rating seemed to suffer a bit in the 2000s but recovered in 2010s. Overall, these designers are usually both prolific and critically acclaimed by users.
+
+#### Figure. Top 5 Prolific Game Designers in Each Decade 
+
+```{r, fig.dim=c(10,8)}
+games_designer <- games %>%
+  separate_rows(designer, sep = ";\\s*") %>%
+  dplyr::group_by(decades, designer) %>%
+  dplyr::summarise(count=n(), score=mean(average)) %>%
+  dplyr::filter(!is.na(designer)) %>%
+  dplyr::filter(designer!="'(Uncredited)'") %>%
+  dplyr::arrange(desc(count), desc(score)) %>%
+  dplyr::slice_head(n=5) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(designer=gsub("'","",designer)) %>%
+  dplyr::group_by(designer) %>%
+  dplyr::mutate(total_count=sum(count)) %>%
+  dplyr::ungroup()
+
+
+ggplot(games_designer, aes(x=tidytext::reorder_within(designer, count, decades), y=count, fill=score)) +
+  geom_col() +
+  tidytext::scale_x_reordered()+
+  scale_fill_gradient(low="#96E9FF", high="#0354AF")+
+  coord_flip() +
+  labs(title="Prolific Game Designer in Each Decade",
+       x="Board Game Designer",
+       y="# of Games Designed in This Decade",
+       subtitle="1. Reiner Knizia has dominated the board game markets for almost 30 years, \nboth with the amount and with acceptable rating of games. \n2. Prospero Hall emerges in the 2020s, taking the lead with 28 new games produced.",
+       caption="Games with <50 reviews excluded.
+                \nLegend represents mean game rating for each decade.") +
+  facet_wrap(~decades, scales = "free", ncol = 2) +
+  theme_classic() +
+  theme(legend.text = element_text(size=12),
+        legend.title = element_text(size=14),
+        plot.title = element_text(size=19, face="bold"),
+        plot.subtitle = element_text(size=12),
+        plot.caption = element_text(size=9, face="bold"),
+        axis.title = element_text(size=14, face="bold"),
+        axis.text = element_text(size=10)) +
+   guides(fill=guide_legend(title="Mean Rating"))
+```
+
+# Aggregate Rating Distribution {data-navmenu="Designers Rating"}
+
+## Column 1 {.sidebar}
+
+We have a glimpse at the ratings from previous graphs through the filled color. Now we directly observe the user ratings of games designed by these prolific board game designers, since they have adequate number of ratings for robust comparison. Let's take a look at any of the top 20 most prolific board game designers.
+
+```{r}
+# Select top 20 game designer for user to pick from (by total quantity aggregated since 1990s)
+top20_designer <- games %>%
+  separate_rows(designer, sep = ";\\s*") %>%
+  dplyr::filter(!is.na(designer)) %>%
+  dplyr::filter(designer!="'(Uncredited)'") %>%
+  dplyr::group_by(designer) %>%
+  dplyr::summarise(total_count=n()) %>% 
+  dplyr::arrange(desc(total_count)) %>% 
+  dplyr::distinct() %>%
+  dplyr::slice_head(n=20) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(designer=gsub("'","",designer))
+
+selectInput("designer_select", "Select one or more designers:", top20_designer$designer, selected = "Reiner Knizia", multiple = TRUE)
+```
+
+<font size="2"> 
+The mean rating takes the average of all ratings since 1990s for a designer.
+Note: Use Delete or Backspace to remove a selected designer.
+</font>
+
+## Column 2
+
+### Game Rating Distribution since 1990s
+
+```{r}
+renderPlot(({
+  games %>%
+    tidyr::separate_rows(designer, sep=";\\s*") %>%
+    dplyr::mutate(category=gsub("\"", "",category)) %>%
+    tidyr::separate_rows(category, sep=";\\s*") %>%
+    dplyr::filter(!is.na(designer)) %>%
+    dplyr::filter(designer!="'(Uncredited)'") %>%
+    dplyr::filter(gsub("'","",designer) %in% input$designer_select) %>%
+    dplyr::select(id, primary, yearpublished, category, designer, average, decades) %>%
+    dplyr::mutate(across(category:designer, ~ gsub("'", "", .))) %>%
+    dplyr::mutate(designer=factor(designer, levels=input$designer_select)) %>%
+    ggplot(., aes(x=designer, y=average)) +
+  stat_boxplot(geom='errorbar', linetype=1, width=0.5) +
+  geom_boxplot(outlier.shape=1) +
+  # dot for mean
+  stat_summary(fun=mean, geom="point", size=2) +
+  labs(title="Distribution of Ratings of Games by Designers since the 1990s",
+       x=paste(length(unique(input$designer_select)), "of the Top 20 Most Prolific Board Game Designers"),
+       y="Users' Rating of Games since the 1990s",
+       subtitle="1. Dean Essig, Eric M. Lang, & Prospero Hall have the top 3 best mean/median game ratings.  \n2. Reiner Knizia's rating was likely negatively impacted by some of his lower-rated games \n   since he is so prolific.",
+       caption="Games with <50 reviews excluded.
+                \nBlack solid point represents the mean game ratings aggregated since 1990s.") +
+  theme_classic() +
+  theme(legend.text = element_text(size=12),
+        legend.title = element_text(size=14),
+        plot.title = element_text(size=17, face="bold"),
+        plot.subtitle = element_text(size=14),
+        plot.caption = element_text(size=11, face="bold"),
+        axis.title = element_text(size=15, face="bold"),
+        axis.text.y = element_text(size=12),
+        axis.text.x = element_text(size=12, angle=45, vjust=0.5))
+}))
+```
+
+
+# Rating over Time {data-navmenu="Designers Rating"}
+
+## Column 1 {.sidebar}
+
+We have seen the aggregate rating distribution from 1990s to 2020s for the top 20 most prolific board game designers. What about ratings over time? Are these designers consistent in each year for the games they produced? 
+
+```{r}
+selectInput("designer_time", "Select one or more designers:", top20_designer$designer, selected = "Reiner Knizia", multiple = TRUE)
+```
+
+<font size="2"> 
+The mean rating takes the average of all ratings within a specific year for a designer.
+Note: Use Delete or Backspace to remove a selected designer.
+</font>
+
+## Column 2
+
+### Game Rating over Time since 1990s
+
+```{r, message=FALSE, warning=FALSE}
+renderPlot(({
+  games %>%
+    tidyr::separate_rows(designer, sep=";\\s*") %>%
+    dplyr::mutate(category=gsub("\"", "",category)) %>%
+    tidyr::separate_rows(category, sep=";\\s*") %>%
+    dplyr::filter(!is.na(designer)) %>%
+    dplyr::filter(designer!="'(Uncredited)'") %>%
+    dplyr::filter(gsub("'","",designer) %in% input$designer_time) %>%
+    dplyr::select(id, primary, yearpublished, category, designer, average, decades) %>%
+    dplyr::mutate(across(category:designer, ~ gsub("'", "", .))) %>%
+    dplyr::mutate(designer=factor(designer, levels=input$designer_time)) %>%
+    dplyr::group_by(designer, yearpublished) %>%
+    # This mean is the mean of user's rating for all games in a specific year!
+    dplyr::mutate(mean_by_year=mean(average)) %>%
+    ggplot(., aes(x=yearpublished, y=mean_by_year)) +
+  geom_point() +
+  geom_smooth(se=TRUE) +
+  facet_wrap(vars(designer), ncol=5, scales="free_y") + 
+  labs(title = "Game Rating over Time since the 1990s",
+       x = "Years",
+       y = "Average Rating for All Games in Each Year",
+       caption = "Game ratings were averaged for each year.",
+       subtitle = "1. For most designers shown, they experienced a drop in rating between 2000 and 2010. \n2. There is a positive trend for almost all designers in recent years.") +
+  theme_classic() +
+  theme(plot.title = element_text(size=24, face="bold"),
+        plot.subtitle = element_text(size=16),
+        plot.caption = element_text(size=12, face="bold"),
+        axis.title.x = element_text(size=18, face="bold"),
+        axis.title.y = element_text(size=18, face="bold"),
+        axis.text = element_text(size=15),
+        strip.text = element_text(size=13, face="bold", color="red"))
+}))
+```
+
+# Designers Categories
+
+## Column 1 {.sidebar}
+
+Here we take a look at some representative board game designers identified from previous tabs, namely, Reiner Knizia, Dean Essig, Eric M. Lang, & Prospero Hall. Note that I only showed the top three categories for readability. The rest of the individual categories are grouped into 'Others' category.
+
+## Column 2 {.tabset}
+
+### Figure
+
+#### Top 3 Game Categories Associated with Top Designers
+
+```{r, message=FALSE, warning=FALSE}
+designer_lst <- c("Dean Essig", "Eric M. Lang", "Prospero Hall", "Reiner Knizia")
+
+games_rating_pie <- 
+  games %>%
+    tidyr::separate_rows(designer, sep=";\\s*") %>%
+    dplyr::mutate(category=gsub("\"", "",category)) %>%
+    tidyr::separate_rows(category, sep=";\\s*") %>%
+    dplyr::filter(!is.na(designer)) %>%
+    dplyr::filter(designer!="'(Uncredited)'") %>%
+    dplyr::filter(gsub("'","",designer) %in% designer_lst) %>%
+    dplyr::select(id, primary, yearpublished, category, designer, average, decades) %>%
+    dplyr::mutate(across(category:designer, ~ gsub("'", "", .))) %>%
+    dplyr::mutate(designer=factor(designer, levels=designer_lst)) %>%
+    dplyr::group_by(designer, category) %>%
+    dplyr::summarise(quantity=n()) %>%
+    dplyr::arrange(designer, desc(quantity)) %>%
+    dplyr::ungroup()
+
+top_categories <- games_rating_pie %>%
+  dplyr::group_by(designer) %>%
+  dplyr::slice_head(n=3) %>%
+  dplyr::mutate(norm_quant=quantity/sum(quantity)) %>%
+  dplyr::ungroup()
+
+# output this other category on the margin!
+others_categories <- games_rating_pie %>%
+  dplyr::anti_join(top_categories, by=c("designer", "category")) %>%
+  dplyr::group_by(designer) %>%
+  dplyr::summarise(quantity = sum(quantity), category="Others")
+
+my_palette <- c("#0073FF", "#DBD4D4", "#7AC4F7", "#117799", "#A52A2A", "#FF99B0", "#FF6347", "#FFE4C4", "#FFA07B", "#A4918C", "#D8BFD8")
+```
+
+
+```{r, message=FALSE, warning=FALSE, fig.dim=c(15,10)}
+# Create a faceted pie chart
+ggplot(top_categories , aes(x="", y=norm_quant, fill=category)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  scale_fill_manual(values = my_palette) +
+  coord_polar("y") +
+  facet_wrap(~ designer) +
+  theme_void() +
+  theme(legend.position = "right") +
+  labs(fill = "Category",
+       subtitle = "A closer look at top game categories for Reiner Knizia, Dean Essig, Eric M. Lang, & Prospero Hall.",
+       caption = "The rest of the categories are characterized as 'Others' & not shown here.") +
+  theme(plot.subtitle = element_text(size=14),
+        plot.caption = element_text(size=9, face="bold"),
+        strip.text = element_text(size=10, face="bold"))
+```
+
+#### Table of "Others" Category for the Designers
+
+```{r, message=FALSE, warning=FALSE}
+colnames(others_categories) <- c("Designer", "Quantity", "Game Category")
+kable(others_categories, format="html") %>%
+  row_spec(0, bold=TRUE) %>%
+  kable_classic_2(html_font="Garamond")
+```
+
+### Table
+
+#### Top 3 Game Categories Associated with Top Designers 
+
+Here I am showing the table associated with the graphs from previous tab. The details for top three categories are displayed in the table below.
+
+```{r, message=FALSE}
+colnames(top_categories) <- c("Designer", "Game Category", "Quantity", "norm_quant")
+kable(top_categories %>% select(-norm_quant), format="html") %>%
+  row_spec(c(seq(1,12,by=3)), bold=TRUE, background="lightyellow") %>%
+  row_spec(0, bold=TRUE) %>%
+  kable_classic_2(html_font="Garamond")
+```
+
+# Popular Games {data-navmenu="Game Category and Mechanic"}
+
+## Column 1 {.sidebar}
+
+Changing gears to look at popular game categories and mechanics, I used the number of ‘owned’ games as the metric to evaluate the popularity of a game.
+
+## Column 2
+
+```{r, warning=FALSE, message=FALSE}
+# Most owned games data cleaning
+owned_games <- games %>%
+  dplyr::group_by(id, primary) %>%
+  dplyr::summarise(owned=sum(owned)) %>%
+  dplyr::arrange(desc(owned)) %>%
+  dplyr::ungroup() %>%
+  dplyr::left_join(y=games %>% select(id, yearpublished, category, average, designer), by="id")
+```
+
+### Top 100 Games from 1990s to 2020s
+
+```{r}
+tb_owned <- owned_games %>%
+  dplyr::slice_head(n=100) %>%
+  dplyr::select(-id) %>%
+  dplyr::mutate(across(category:designer, ~ gsub("'", "", .))) %>%
+  dplyr::mutate(across(category:designer, ~ gsub(";", "; ", .)))
+
+colnames(tb_owned) <- c("Game", "Owned", "Year", "Category", "Rating", "Designer")
+
+tb_owned %>%
+  DT::datatable(., 
+                options = list(autoWidth = TRUE,
+                               pageLength = 20,
+                               scroller = TRUE,
+                               scrollY = '600px'))
+```
+
+
+# Popular Game Category {data-navmenu="Game Category and Mechanic"}
+
+## Column 1 {.sidebar}
+
+Assessing popular game categories in each year. We see that card games are extremely popular ever since the 90s. Dice and fantasy games are also growing in popularity in recent years.
+
+```{r, message=FALSE}
+games_category <- games %>%
+  separate_rows(category, sep = ";\\s*") %>%
+  dplyr::group_by(yearpublished, category) %>%
+  dplyr::summarise(count=n()) %>%
+  dplyr::arrange(yearpublished, desc(count)) %>%
+  dplyr::slice_head(n=3) %>%
+  dplyr::mutate(category=gsub("^'(.+)'$|^\"(.+)\"$", "\\1\\2", category))
+```
+
+## Column 2 {data-width="650"}
+
+### Figure
+
+```{r, fig.dim=c(10,8)}
+pal = c("#2F4F4F","#CE5FA7","#DBD4D4","#DE1818","#023DCF", 
+            "#D580FF", "#FFD900","#6B00C2","#00407F",
+            "#66E0FF","#B03B56","#90EE90","#A4918C",
+            "#3BA500","#000000")
+
+ggplot(games_category , aes(x=yearpublished, y=count, fill=category)) +
+  geom_bar(stat="identity") +
+  labs(title="Top 3 Game Categories by Year", 
+       x="Years",
+       y="Frequency",
+       subtitle="Card game is by far the most popular game category over the years.",
+       caption="Some games are associated with multiple categories.") +
+  theme_minimal() +
+  scale_fill_manual(values=pal) +
+  theme(legend.text = element_text(size=10),
+        legend.title = element_text(size=14),
+        plot.title = element_text(size=19, face="bold"),
+        plot.subtitle = element_text(size=12),
+        plot.caption = element_text(size=9, face="bold"),
+        axis.title = element_text(size=14, face="bold"),
+        axis.text = element_text(size=10)) +
+   guides(fill=guide_legend(title="Category",keyheight=1, keywidth=1,ncol=1))
+```
+
+## Column 3
+
+### Table
+
+```{r}
+games_category %>%
+  DT::datatable(., 
+                options = list(pageLength = 20,
+                               scroller = TRUE,
+                               scrollY = '500px'))
+```
+
+
+# Popular Game Mechanics {data-navmenu="Game Category and Mechanic"}
+
+## Column 1 {.sidebar}
+
+Similarly, we look at popular game mechanics. That is, the mode of the board game or how it is played. We observed that dice rolling, hand management, and variable player power games are very popular.
+
+```{r}
+games_mechanic <- games %>%
+  separate_rows(mechanic, sep = ";\\s*") %>%
+  dplyr::filter(!is.na(mechanic)) %>%
+  dplyr::group_by(yearpublished, mechanic) %>%
+  dplyr::summarise(count=n()) %>%
+  dplyr::arrange(yearpublished, desc(count)) %>%
+  dplyr::slice_head(n=3) %>%
+  dplyr::mutate(mechanic=gsub("^'(.+)'$|^\"(.+)\"$", "\\1\\2", mechanic))
+```
+
+## Column 2 {data-width="650"}
+
+### Figure
+
+```{r, fig.dim=c(10,8)}
+pal = c("#2F4F4F","#CE5FA7","#023DCF","#A4918C","#ADD8E6", 
+            "#FFA07A", "#FFD700","#6B00C2","#DDA0DD",
+            "#66E0FF","#B03B56","#DE1818","#3BA500",
+            "#EEE8AA","#000000")
+
+ggplot(games_mechanic , aes(x=yearpublished, y=count, fill=mechanic)) +
+  geom_bar(stat="identity") +
+  labs(title="Top 3 Game Mechanics by Year", 
+       x="Years",
+       y="Frequency",
+       subtitle="Dice rolling, hand management, and variable player power games are popular game mechanics.",
+       caption="Some games are associated with multiple mechanics.") +
+  theme_minimal() +
+  scale_fill_manual(values=pal) +
+  theme(legend.text = element_text(size=10),
+        legend.title = element_text(size=14),
+        plot.title = element_text(size=19, face="bold"),
+        plot.subtitle = element_text(size=12),
+        plot.caption = element_text(size=9, face="bold"),
+        axis.title = element_text(size=14, face="bold"),
+        axis.text = element_text(size=10)) +
+   guides(fill=guide_legend(title="mechanic",keyheight=1, keywidth=1,ncol=1))
+```
+
+## Column 3
+
+### Table
+
+```{r}
+games_mechanic %>%
+  DT::datatable(., 
+                options = list(pageLength = 20,
+                               scroller = TRUE,
+                               scrollY = '500px'))
+```
+
+# Analysis
+
+## Column 1 {.sidebar}
+
+**Summary:** Most of the plots are already represented in the tabs. This will just be a more complete analysis of the questions I asked in the beginning. In this analysis, we explored the board game dataset to identify some of the best board game designers, based on quantity, rating, consistency, trends, owned status. We listed out a few of the best designers, including Reiner Knizia, Dean Essig, Eric M. Lang, Martin Wallace, & Matt Leacock. We also identified the top three most popular game categories and mechanics, such as card game and dice rolling, respectively.
+
+## Column 2  {style="height:380pc;"}
+
+### Fig 1. Prolific game designers by the number of games designed since the 1990
+
+```{r, fig.dim=c(10,8)}
+x = ggplot(games_designer %>%
+    dplyr::mutate(decades=factor(decades, levels=rev(unique(decades)))), aes(x=fct_reorder(designer, total_count), y=count, fill=decades)) +
+    geom_bar(stat="identity", position="stack") +
+    coord_flip() +
+    labs(title = "Prolific Game Designers since 1990s",
+         x = "Designer",
+         y = "# of Board Games Developed",
+         subtitle = "Reiner Knizia is the most prolific game designer since the 1990s, totaling 300+ games.",
+         caption = "Games with <50 reviews excluded."
+         ) +
+    theme_bw() +
+    theme(legend.text = element_text(size=12),
+          legend.title = element_text(size=14),
+          plot.title = element_text(size=19, face="bold"),
+          plot.subtitle = element_text(size=12),
+          plot.caption = element_text(size=9, face="bold"),
+          axis.title = element_text(size=14, face="bold"),
+          axis.text = element_text(size=10)) +
+     guides(fill=guide_legend(title="Decades")) +
+    scale_fill_brewer(palette="Set2")
+
+x
+```
+
+### Fig 2. Top 5 prolific game designers in each decade.
+
+```{r, fig.dim=c(10,8)}
+ggplot(games_designer, aes(x=tidytext::reorder_within(designer, count, decades), y=count, fill=score)) +
+  geom_col() +
+  tidytext::scale_x_reordered()+
+  scale_fill_gradient(low="#96E9FF", high="#0354AF")+
+  coord_flip() +
+  labs(title="Top 5 Most Prolific Game Designer in Each Decade",
+       x="Board Game Designer",
+       y="# of Games Designed in This Decade",
+       subtitle="1. Reiner Knizia has dominated the board game markets for almost 30 years, \nboth with the amount and with acceptable rating of games. \n2. Prospero Hall emerges in the 2020s, taking the lead with 28 new games produced.",
+       caption="Games with <50 reviews excluded.
+                \nLegend represents mean game rating for each decade.") +
+  facet_wrap(~decades, scales = "free", ncol = 2) +
+  theme_classic() +
+  theme(legend.text = element_text(size=12),
+        legend.title = element_text(size=14),
+        plot.title = element_text(size=19, face="bold"),
+        plot.subtitle = element_text(size=12),
+        plot.caption = element_text(size=9, face="bold"),
+        axis.title = element_text(size=14, face="bold"),
+        axis.text = element_text(size=10)) +
+   guides(fill=guide_legend(title="Mean Rating"))
+```
+
+### Fig 3. Rating distribution of games designed by prolific game designers (top 10 by quantity of games)
+
+```{r, fig.dim=c(9,8)}
+top_designer <- games_designer %>% 
+  dplyr::arrange(desc(total_count)) %>% 
+  dplyr::select(designer) %>%
+  dplyr::distinct() %>%
+  dplyr::slice_head(n=10)
+
+games_rating <- games %>%
+  tidyr::separate_rows(designer, sep=";\\s*") %>%
+  dplyr::mutate(category=gsub("\"", "",category)) %>%
+  tidyr::separate_rows(category, sep=";\\s*") %>%
+  dplyr::filter(!is.na(designer)) %>%
+  dplyr::filter(designer!="'(Uncredited)'") %>%
+  dplyr::filter(gsub("'","",designer) %in% top_designer$designer) %>%
+  dplyr::select(id, primary, yearpublished, category, designer, average, decades) %>%
+  dplyr::mutate(across(category:designer, ~ gsub("'", "", .))) %>%
+  dplyr::mutate(designer=factor(designer, levels=top_designer$designer))
+
+
+x <- ggplot(games_rating, aes(x=designer, y=average)) +
+  stat_boxplot(geom='errorbar', linetype=1, width=0.5) +
+  geom_boxplot(outlier.shape=1) +
+  # dot for mean
+  stat_summary(fun=mean, geom="point", size=2) +
+  labs(title="Distribution of Ratings of Games by Designers since the 1990s",
+       x="Top 10 Most Prolific Board Game Designers",
+       y="Users' Rating of Games since the 1990s",
+       subtitle="1. Dean Essig, Eric M. Lang, & Martin Wallace have the top 3 best mean/median game ratings.  \n2. Reiner Knizia's rating was likely negatively impacted by some of his lower-rated games \n   since he is so prolific.",
+       caption="Games with <50 reviews excluded.
+                \nBlack solid point represents the mean game rating from 1990s-2020s.") +
+  theme_classic() +
+  theme(legend.text = element_text(size=12),
+        legend.title = element_text(size=14),
+        plot.title = element_text(size=17, face="bold"),
+        plot.subtitle = element_text(size=14),
+        plot.caption = element_text(size=10, face="bold"),
+        axis.title = element_text(size=15, face="bold"),
+        axis.text.y = element_text(size=12),
+        axis.text.x = element_text(size=12, angle=45, vjust=0.5))
+
+x
+```
+
+### Fig 4. Rating over time for top designers
+
+```{r, fig.dim=c(16,8)}
+games_rating_2 <- games_rating %>%
+  dplyr::group_by(designer, yearpublished) %>%
+  # This mean is the mean of user's rating for all games in a specific year!
+  dplyr::mutate(mean_by_year=mean(average))
+
+ggplot(games_rating_2, aes(x=yearpublished, y=mean_by_year)) +
+  geom_point() +
+  geom_smooth(se=TRUE) +
+  facet_wrap(vars(designer), ncol=5, scales="free_y") + 
+  labs(title = "Game Rating over Time since the 1990s",
+       x = "Years",
+       y = "Average Rating for All Games in Each Year",
+       caption = "Game rating was averaged for each year.",
+       subtitle = "1. For most designers shown, they experienced a drop in rating between 2000 and 2010. \n2. There is a positive trend for almost all designers in recent years.") +
+  theme_classic() +
+  theme(plot.title = element_text(size=24, face="bold"),
+        plot.subtitle = element_text(size=16),
+        plot.caption = element_text(size=12, face="bold"),
+        axis.title.x = element_text(size=18, face="bold"),
+        axis.title.y = element_text(size=18, face="bold"),
+        axis.text = element_text(size=15),
+        strip.text = element_text(size=14, face="bold", color="red"))
+```
+
+### Fig 5. Top three game categories associated with top game designers
+
+```{r, message=FALSE, fig.dim=c(9,8)}
+
+designer_lst <- c("Dean Essig", "Eric M. Lang", "Martin Wallace", "Reiner Knizia")
+games_rating_pie <- games_rating_2 %>%
+  dplyr::filter(designer %in% designer_lst) %>%
+  dplyr::group_by(designer, category) %>%
+  dplyr::summarise(quantity=n()) %>%
+  dplyr::arrange(designer, desc(quantity)) %>%
+  dplyr::ungroup()
+
+top_categories <- games_rating_pie %>%
+  dplyr::group_by(designer) %>%
+  dplyr::slice_head(n=3) %>%
+  dplyr::mutate(norm_quant=quantity/sum(quantity)) %>%
+  dplyr::ungroup()
+
+
+# output this other category on the margin!
+others_categories <- games_rating_pie %>%
+  dplyr::anti_join(top_categories, by=c("designer", "category")) %>%
+  dplyr::group_by(designer) %>%
+  dplyr::summarise(quantity = sum(quantity), category="Others")
+
+my_palette <- c("#0073FF", "#DBD4D4", "#7AC4F7", "#117799", "#A52A2A", "#D8BFD8", "#FF6347", "#FFE4C4", "#FFA07B", "#A4918C")
+
+
+# Create a faceted pie chart
+ggplot(top_categories , aes(x="", y=norm_quant, fill=category)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  scale_fill_manual(values = my_palette) +
+  coord_polar("y") +
+  facet_wrap(~ designer) +
+  theme_void() +
+  theme(legend.position = "right") +
+  labs(title = "Top 3 Most Frequent Categories for Designers",
+       fill = "Category",
+       subtitle = "A closer look at top game categories for Reiner Knizia, Dean Essig,\nEric M. Lang, & Martin Wallace.",
+       caption = "The rest of the categories are characterized as 'Others' & not shown here.") +
+  theme(plot.title = element_text(size=20, face="bold"),
+        plot.subtitle = element_text(size=14),
+        plot.caption = element_text(size=12, face="bold"),
+        strip.text = element_text(size=10, face="bold"))
+```
+
+### Fig 6. Association of rating vs. owned status
+
+```{r, fig.dim=c(9,8)}
+
+ggplot(data=owned_games %>% filter(owned>=100), aes(x=owned, y=average)) +
+  geom_hex(bins=45) +
+  scale_fill_viridis_c(option="D") +
+  geom_smooth(stat="smooth", color="red") +
+  scale_x_log10() +
+  theme_bw() +
+  labs(x = "Number of People Owning the Game",
+       y = "Rating of the Game",
+       title = "Game Rating vs. Number of People Owning the Game",
+       subtitle = "A potential positive association is found, though many games cluster around \nrating = 6-7 and # owned = between 100~1000.",
+       caption = "Only games owned by at least 100 people are included in the analysis.") +
+  theme(plot.title = element_text(size=21, face="bold"),
+        plot.subtitle = element_text(size=16),
+        plot.caption = element_text(size=12, face="bold"),
+        axis.title.x = element_text(size=18, face="bold"),
+        axis.title.y = element_text(size=18, face="bold"),
+        axis.text = element_text(size=15))
+```
+
+### Fig 7. Trends of top 3 game categories over time (1990-2023)
+
+```{r, message=FALSE}
+games_category <- games %>%
+  separate_rows(category, sep = ";\\s*") %>%
+  dplyr::group_by(yearpublished, category) %>%
+  dplyr::summarise(count=n()) %>%
+  dplyr::arrange(yearpublished, desc(count)) %>%
+  dplyr::slice_head(n=3) %>%
+  dplyr::mutate(category=gsub("^'(.+)'$|^\"(.+)\"$", "\\1\\2", category))
+```
+
+```{r, fig.dim=c(9.5,8)}
+
+pal = c("#2F4F4F","#CE5FA7","#DBD4D4","#DE1818","#023DCF", 
+            "#D580FF", "#FFD900","#6B00C2","#00407F",
+            "#66E0FF","#B03B56","#90EE90","#A4918C",
+            "#3BA500","#000000")
+
+ggplot(games_category , aes(x=yearpublished, y=count, fill=category)) +
+  geom_bar(stat="identity") +
+  labs(title="Top 3 Game Categories by Year", 
+       x="Years",
+       y="Frequency",
+       subtitle="Card game is by far the most popular game category over the years.",
+       caption="Some games are associated with multiple categories.") +
+  theme_minimal() +
+  scale_fill_manual(values=pal) +
+  theme(legend.text = element_text(size=10),
+        legend.title = element_text(size=14),
+        plot.title = element_text(size=19, face="bold"),
+        plot.subtitle = element_text(size=12),
+        plot.caption = element_text(size=9, face="bold"),
+        axis.title = element_text(size=14, face="bold"),
+        axis.text = element_text(size=10)) +
+   guides(fill=guide_legend(title="Category",keyheight=1, keywidth=1,ncol=1))
+```
+
+### Fig 8. Trends of top 3 game mechanics over time (1990-2023)
+
+```{r, message=FALSE}
+games_mechanic <- games %>%
+  separate_rows(mechanic, sep = ";\\s*") %>%
+  dplyr::filter(!is.na(mechanic)) %>%
+  dplyr::group_by(yearpublished, mechanic) %>%
+  dplyr::summarise(count=n()) %>%
+  dplyr::arrange(yearpublished, desc(count)) %>%
+  dplyr::slice_head(n=3) %>%
+  dplyr::mutate(mechanic=gsub("^'(.+)'$|^\"(.+)\"$", "\\1\\2", mechanic))
+```
+
+```{r, fig.dim=c(9.5,8)}
+pal = c("#2F4F4F","#CE5FA7","#023DCF","#A4918C","#ADD8E6", 
+            "#FFA07A", "#FFD700","#6B00C2","#DDA0DD",
+            "#66E0FF","#B03B56","#DE1818","#3BA500",
+            "#EEE8AA","#000000")
+
+ggplot(games_mechanic , aes(x=yearpublished, y=count, fill=mechanic)) +
+  geom_bar(stat="identity") +
+  labs(title="Top 3 Game Mechanics by Year", 
+       x="Years",
+       y="Frequency",
+       subtitle="Dice rolling, hand management, and variable player power games are popular game mechanics.",
+       caption="Some games are associated with multiple mechanics.") +
+  theme_minimal() +
+  scale_fill_manual(values=pal) +
+  theme(legend.text = element_text(size=10),
+        legend.title = element_text(size=14),
+        plot.title = element_text(size=19, face="bold"),
+        plot.subtitle = element_text(size=12),
+        plot.caption = element_text(size=9, face="bold"),
+        axis.title = element_text(size=14, face="bold"),
+        axis.text = element_text(size=10)) +
+   guides(fill=guide_legend(title="mechanic",keyheight=1, keywidth=1,ncol=1))
+```

@@ -1,0 +1,347 @@
+---
+title: "Project 3 Part 2 Example Analysis"
+author: 
+  - name: Zixing (Peter) Liu
+date: 2023-12-12
+description: An example analysis with tidycensus Data (API)
+categories: [PH_140_777, Project_3_part2, API]
+knitr: true
+editor: visual
+---
+
+
+::: {layout-ncol="2"}
+![](img/logo.png)
+
+This is an example analysis for the API practice, created for course biostats777-project 3 part 2, written by Zixing (Peter) Liu. The datasets were obtained using API using R Package [tidycensus](https://walker-data.com/tidycensus)[@Manual], which allows users to interface with a few US Census Bureau's data APIs and output tidyverse-ready data frame.
+:::
+
+```{r setup0}
+#| label: "Setup"
+#| message: false
+#| warning: false
+KEY = Sys.getenv("TIDYCENSUS_API_KEY")
+library(httr)
+library(tidyverse)
+library(tidycensus)
+library(lubridate)
+library(stringr)
+library(forcats)
+library(purrr)
+library(magrittr)
+library(here)
+library(RColorBrewer)
+```
+
+### Project Aims
+
+Census data has always been a popular source of data analysis, consisting of a wide range of information such as population, education attainment, etc. In particular, it is good for analysis of trends since it is longitudinal data. In this exploratory analysis, I aim to investigate the following questions about employment, education, and income from year 2010 to 2019. 
+
+1. How has the employment rate changed over time for those who have a bachelor degree in different states of the US?
+2. How has the percentage of those with a bachelor degree changed over time in the US?
+3. How does income level compare in 2019 in the top 10 most-educated states in the US?
+
+The intended audience are those interested in census data and large-scaled data analysis for trends, as well as the TA/Instructors for Biostats-777 course.
+
+::: {.callout-important title="Analysis background"}
+Note that I will only focus on the US data in this analysis. I will also mostly highlight those with a bachelor degree, to keep the content brief and readable.
+:::
+
+### Data Source
+As mentioned above, the data set was obtained using API. In this analysis, we extract the following variables from the census data (acs1) for the years 2010 ~ 2019. The data are by years and states：
+
+1. **Employment** 
+    - "B23006_023": number of people 25-64 years old who have a bachelor degree
+    - "B23006_024": number of people 25-64 years old who have a bachelor degree and are employed
+
+2. **Education**
+    - "B06009_001": number of people in each state (by birth); we treat this as total population in each state
+    - "B06009_005": number of people with a bachelor degree
+
+3. **Income**
+    - "B06011_001": median income in the past 12 months
+    
+::: callout-caution
+The data is estimate with margin of error (95% CI) and is not to be interpreted as absolute fixed number. There is a lack of data for the year 2020, so therefore the source data for analysis was cut off at 2019.
+:::
+
+### Loading Data
+
+```{r setup1}
+# # searching for variables of interst
+# v10 <- load_variables(2010, "acs5", cache=TRUE)
+```
+
+```{r}
+#| label: "Loading Data"
+#| message: false
+# Check if 'data' directory exists, if not, create it
+if (!dir.exists("data")) {
+  dir.create("data")
+}
+
+file1 <- here("data", "income_data.csv")
+file2 <- here("data", "education_data.csv")
+file3 <- here("data", "employment_data.csv")
+
+get_data <- function(vars, years, dataset_name){
+  if (!file.exists(file1) && file.exists(file2) && file.exists(file3)) {
+    tidycensus::census_api_key(KEY)
+    data <- purrr::map(years, ~{
+      year_data <- get_acs(geography = "state", variables = vars, year = .x, survey="acs1", moe_level=95)
+      year_data$year <- .x  # Add a "year" column with current year of the data
+      return(year_data)
+    }) %>%
+    purrr::reduce(full_join) %>%
+    dplyr::distinct()
+    
+    readr::write_csv(data, here("data", paste0(dataset_name, ".csv")))
+  }
+}
+
+# Retrieve and save data for employment, education, and income
+get_data(c("B23006_023", "B23006_024"), c(2010:2019), "employment_data")
+get_data(c("B06009_001", "B06009_005"), c(2010:2019), "education_data")
+get_data("B06011_001", c(2010:2019), "income_data")
+
+# Reading in Data
+employment <- read_csv(here("data", "employment_data.csv"))
+education <- read_csv(here("data", "education_data.csv"))
+income <- read_csv(here("data", "income_data.csv"))
+```
+
+### Data cleaning
+
+```{r}
+#| message: false
+# remove all rows with NAs using purrr
+cleaned_data <- purrr::map(list(employment, education, income), ~ .x %>% tidyr::drop_na())
+
+employment_data <- cleaned_data[[1]] %>%
+  dplyr::group_by(GEOID, NAME, year) %>%
+  dplyr::mutate(employment_ratio=estimate[variable=="B23006_024"]/estimate[variable=="B23006_023"]) %>%
+  dplyr::ungroup()
+
+education_data <- cleaned_data[[2]] %>%
+  dplyr::group_by(GEOID, NAME, year) %>%
+  dplyr::mutate(education_ratio=estimate[variable=="B06009_005"]/estimate[variable=="B06009_001"]) %>%
+  dplyr::ungroup()
+
+income_data <- cleaned_data[[3]]
+
+data_list <- list(income_data, education_data, employment_data)
+s_name <- c("income_data", "education_data", "employment_data") %>%
+  stringr::str_remove(., "_data")
+
+# Combine and transform using purrr
+combined_dat <- purrr::map2(data_list, s_name, ~ {
+  # Add a "source" column indicating the source dataset
+  source_name <- .y
+  .x %>%
+    dplyr::mutate(source = source_name) %>%
+    dplyr::mutate(year = ymd(paste0(year, "-01-01"))) %>%
+    dplyr::mutate(est_lower = estimate-moe) %>%
+    dplyr::mutate(est_higher = estimate+moe) %>%
+    tidyr::pivot_longer(
+      cols = -c(GEOID, NAME, year, variable, source),
+      names_to = "col_types",
+      values_to = "value"
+    ) %>%
+    dplyr::rename(state=NAME)
+})
+
+# Bind the list of transformed datasets into a single dataset
+combined_dat <- dplyr::bind_rows(combined_dat)
+
+
+# ===============================================
+# ===============================================
+# some state subsets for possible analysis
+# https://www.usnews.com/news/best-states/slideshows/most-populated-states-in-the-us
+top_10_populated_states = c("California", "Texas", "Florida", "New York", "Pennsylvania", "Illinois", "Ohio", "Georgia", "North Carolina", "Michigan")
+# https://wisevoter.com/state-rankings/richest-states-in-usa/
+top_10_wealthiest_states = c("District of Columbia", "New York", "Massachusettes", "Washington", "California", "North Dakota", "Connecticut", "Delaware", "Alaska", "Nebraska")
+# https://www.fcnl.org/updates/2023-11/top-10-poorest-states-us#:~:text=According%20to%20the%20U.S.%20Census,%2C%20Texas%2C%20and%20New%20York.
+top_10_poorest_states = c("Mississippi", "Louisiana", "West Virginia", "New Mexico", "Arkansas", "Kentucky", "Alabama", "Oklahoma", "Texas", "New York")
+# https://wallethub.com/edu/e/most-educated-states/31075
+top_10_educated_states = c("Massachusettes", "Maryland", "Connecticut", "Vermont", "Colorado", "New Jersey", "Virginia", "New Hampshire", "Minnesota", "Utah")
+# Note: not all of these will be used.
+# Some colors for use
+colors = c("#0073FF","#117799","#023DCF","#B03B56","#A4ACCB","#D580FF","#FFD900","#66E0FF","#00407F","#CE5FA7","#DE1818","#DBD4D4","#A4918C","#6B00C2","#7AC4F7","#00E54D","#208000","#C49102","#FF99B0","#646D71")
+```
+
+
+### Question 1.
+
+**How has the employment rates change over the years for those with a Bachelor's degree in the top 10 most populated states?**
+
+```{r}
+#| fig-width: 10
+#| fig-height: 8
+# Plot 1: Employment Rate over Years
+plot1_dat <- combined_dat %>%
+  dplyr::filter(source=="employment") %>%
+  dplyr::filter(col_types=="employment_ratio") %>%
+  dplyr::select(-variable) %>%
+  dplyr::distinct() %>%
+  dplyr::filter(state %in% top_10_populated_states)
+
+col1 <- colors[1:10]
+
+ggplot(plot1_dat, aes(x = year, y = value * 100, color = state)) +
+  geom_line(size=0.8) +
+  scale_color_manual(values = col1) +
+  labs(title = "Employment Rate Among those with Bachelor Degrees over the Years", 
+       x = "Year", 
+       y = "Employment Rate (%)",
+       subtitle = "Florida has the lowest employment rates, though most show an upward trend.",
+       caption = "Only based on people with a Bachelor's degree in each states") +
+    theme_bw() +
+    theme(plot.title = element_text(size=19, face="bold"),
+          plot.subtitle = element_text(size=14),
+          plot.caption = element_text(size=11, face="bold"),
+          axis.title = element_text(size=16, face="bold"),
+          axis.text = element_text(size=12),
+          strip.text = element_text(size=13, face="bold", color="black"))
+```
+
+We see that most states have a upward trend in terms of employment rates of those with a Bachelor's degree. It would be beneficial though for data after 2019 to be analyzed to see the impact of COVID-19 pandemic.
+
+### Question 2.
+
+**How has the education level (evaluated by proportion of population with Bachelor's degree) change over the years in the top 10 most populated states?**
+
+
+```{r}
+#| fig-width: 8
+#| fig-height: 7
+# Plot 2: Education Level Over Years
+
+plot2_dat <- combined_dat %>%
+  dplyr::filter(col_types=="education_ratio") %>%
+  dplyr::select(-variable) %>%
+  dplyr::distinct() %>%
+  dplyr::filter(state %in% top_10_populated_states) 
+
+ggplot(plot2_dat, aes(x = year, y = value * 100, color = state)) +
+  geom_point(size=2) +
+  scale_color_manual(values=colors[4:13]) +
+  facet_wrap(~ state, ncol = 5) +
+  labs(title = "Education Level Over Years", x = "Year", y = "Percentage with Bachelor's Degree") +
+  theme_classic() +
+  labs(title = "Education Level over the Years for Most Populated States", 
+       x = "Year", 
+       y = "Bachelor's Degree Attainment Rate (%)",
+       subtitle = "All show an increasing trend, though NY and CA seems to have the sharpest slope.",
+       caption = "Graduate degrees not included. Data based on top-10 most populated states.") +
+    theme_bw() +
+    theme(plot.title = element_text(size=19, face="bold"),
+          plot.subtitle = element_text(size=14),
+          plot.caption = element_text(size=11, face="bold"),
+          axis.title = element_text(size=16, face="bold"),
+          axis.text.y = element_text(size=12),
+          strip.text = element_text(size=10, face="bold", color="black"),
+          axis.text.x = element_text(size=9, angle=45, hjust=1))
+```
+
+We observe that there is an increasing trend for all these populated states, and their proportions of people with bachelor's degree are fairly consistent with each other. So what about states that show a huge difference in wealth.
+
+### Question 2.1
+
+**How has the education level (evaluated by proportion of population with Bachelor's degree) change over the years in the top 5 wealthiest and poorest states?**
+
+```{r}
+#| fig-width: 9
+#| fig-height: 8
+plot2.1_dat <- combined_dat %>%
+  dplyr::filter(col_types=="education_ratio") %>%
+  dplyr::select(-variable) %>%
+  dplyr::distinct() %>%
+  dplyr::filter(state %in% c(top_10_wealthiest_states[1:5], top_10_poorest_states[1:5])) %>%
+  dplyr::mutate(wealth = ifelse(state %in% top_10_wealthiest_states[1:5], "wealthiest", "poorest"))
+
+ggplot(plot2.1_dat, aes(x = year, y = value * 100, color = state)) +
+  geom_line(size=0.8) +
+  scale_color_manual(values=colors[7:16]) +
+  facet_wrap(~ wealth) +
+  labs(title = "Education Level Over Years", x = "Year", y = "Percentage with Bachelor's Degree") +
+  theme_classic() +
+  labs(title = "Education Level over the Years for Richest and Poorest States", 
+       x = "Year", 
+       y = "Bachelor's Degree Attainment Rate (%)",
+       subtitle = "There is a clearly lower education level among states that are poorer.",
+       caption = "Graduate degrees not included. Data based on top-5 richest & poorest states.") +
+    theme_bw() +
+    theme(plot.title = element_text(size=19, face="bold"),
+          plot.subtitle = element_text(size=14),
+          plot.caption = element_text(size=11, face="bold"),
+          axis.title = element_text(size=16, face="bold"),
+          axis.text.y = element_text(size=12),
+          strip.text = element_text(size=13, face="bold", color="black"),
+          axis.text.x = element_text(size=9, angle=45, hjust=1))
+```
+
+We see a clear difference in proportion of those with a bachelor's degree (at least 5-10% lower), when comparing the richest and poorest states.
+
+
+### Question 3
+
+**How does income level (evaluated by median household income) compare in 2019 in the top 10 most-educated states (by those with higher degrees)?**
+
+```{r}
+#| fig-width: 8.5
+#| fig-height: 8
+# Plot 3: Median Household Income Over Years
+
+plot3_dat <- combined_dat %>%
+  dplyr::filter(source=="income") %>%
+  dplyr::select(-variable) %>%
+  dplyr::distinct() %>%
+  dplyr::filter(state %in% top_10_educated_states) %>%
+  dplyr::filter(year==as.Date("2019-01-01")) %>%
+  dplyr::select(-year) %>%
+  tidyr::pivot_wider(id_cols=c("GEOID", "state", "source"),
+                     names_from = col_types,
+                     values_from = value)
+  
+ 
+ggplot(plot3_dat, aes(x = forcats::fct_reorder(state, -estimate), y = estimate)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(aes(ymin = est_lower, ymax = est_higher, width = 0.2)) +
+  theme_classic() +
+  labs(title = "Income Level of Top Most Educated States in 2019", 
+       x = "Top 10 Most Educated States", 
+       y = "Income (in USD)",
+       subtitle = "Maryland has the highest median household income in 2019",
+       caption = "Comparison based among top 10 most educated states") +
+  theme(plot.title = element_text(size=19, face="bold"),
+          plot.subtitle = element_text(size=14),
+          plot.caption = element_text(size=11, face="bold"),
+          axis.title = element_text(size=16, face="bold"),
+          axis.text.y = element_text(size=12),
+          strip.text = element_text(size=13, face="bold", color="black"),
+          axis.text.x = element_text(size=9, angle=45, hjust=1))
+```
+We see that Maryland, New Jersey, and Connecticut has the highest median household income in 2019.
+
+### Summary
+
+In this example analysis, we explored the trends of employment rates and education level in US. We also evaluated the income level in the US in 2019.
+
+Note: all interpretations of plots are written below the graphs. Overall, we found that the employment rates are going up steadily. We also found that wealthier states have a higher proportion of people with a Bachelor's degree, as expected. Also, Maryland has the highest median household income among the top 10 most educated states.
+
+### List of Functions Used
+
+**purrr:** map, map2, reduce
+
+**facet_wrap**: in plots for question 2
+
+**dplyr:** filter, select, mutate, group_by, ungroup, distinct, bind_rows, rename
+
+**lubridate:** ymd
+
+**tidyr:** pivot_longer, pivot_wider
+
+**forcats:** fct_reorder
+
+**geom\_():** geom_col, geom_point, geom_line, geom_errorbar
